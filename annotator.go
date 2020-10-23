@@ -161,7 +161,6 @@ func (a *manifestAnnotator) processAnnotations(lines []string, out *bytes.Buffer
 		if key == a.Annotation {
 			found = true
 			if value != a.Value {
-				fmt.Printf("Value does not match, replacing\n")
 				fmt.Fprintf(out, "    %s: %q\n", a.Annotation, a.Value)
 				changed = true
 				continue
