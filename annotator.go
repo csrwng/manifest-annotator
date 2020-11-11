@@ -10,9 +10,10 @@ import (
 )
 
 type manifestAnnotator struct {
-	FileName   string
-	Annotation string
-	Value      string
+	FileName       string
+	Annotation     string
+	SkipAnnotation string
+	Value          string
 
 	Kind         string
 	GroupVersion string
@@ -150,6 +151,7 @@ func (a *manifestAnnotator) processMetadata(lines []string, kind, groupVersion s
 func (a *manifestAnnotator) processAnnotations(lines []string, out *bytes.Buffer) bool {
 	changed := false
 	found := false
+	shouldSkip := false
 	for _, line := range lines {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) != 2 { // if we can't parse, just write as is
@@ -165,10 +167,12 @@ func (a *manifestAnnotator) processAnnotations(lines []string, out *bytes.Buffer
 				changed = true
 				continue
 			}
+		} else if key == a.SkipAnnotation {
+			shouldSkip = true
 		}
 		out.WriteString(line + "\n")
 	}
-	if !found {
+	if !found && !shouldSkip {
 		changed = true
 		fmt.Fprintf(out, "    %s: %q\n", a.Annotation, a.Value)
 	}

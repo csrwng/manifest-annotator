@@ -35,5 +35,6 @@ removing comments, etc. Supports files with multiple manifests.`,
 	cmd.Flags().StringVar(&opts.Namespace, "namespace", "", "[optional] Only annotate manifests with this namespace")
 	cmd.Flags().StringVar(&opts.Kind, "kind", "", "[optional] Only annotate manifests with this kind")
 	cmd.Flags().StringVar(&opts.GroupVersion, "groupVersion", "", "[optional] Only annotate manifests with this group and version")
+	cmd.Flags().StringVar(&opts.SkipAnnotation, "skip-annotation", "", "[optional] Skip manifest if this annotation is present")
 	return cmd
 }
