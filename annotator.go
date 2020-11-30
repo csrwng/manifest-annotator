@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -148,33 +149,65 @@ func (a *manifestAnnotator) processMetadata(lines []string, kind, groupVersion s
 	return changed
 }
 
-func (a *manifestAnnotator) processAnnotations(lines []string, out *bytes.Buffer) bool {
-	changed := false
-	found := false
-	shouldSkip := false
+type annotationSorter struct {
+	lines []string
+}
+
+func (s *annotationSorter) Len() int {
+	return len(s.lines)
+}
+
+// Less reports whether the element with
+// index i should sort before the element with index j.
+func (s *annotationSorter) Less(i, j int) bool {
+	partsI := strings.SplitN(s.lines[i], ":", 2)
+	partsJ := strings.SplitN(s.lines[j], ":", 2)
+	if partsI[0] == partsJ[0] {
+		return partsI[1] < partsJ[1]
+	}
+	return partsI[0] < partsJ[0]
+}
+
+// Swap swaps the elements with indexes i and j.
+func (s *annotationSorter) Swap(i, j int) {
+	tmp := s.lines[i]
+	s.lines[i] = s.lines[j]
+	s.lines[j] = tmp
+}
+
+func sortAnnotations(lines []string) {
+	sort.Sort(&annotationSorter{lines: lines})
+}
+
+func includesAnnotation(lines []string, annotation string) bool {
 	for _, line := range lines {
 		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 { // if we can't parse, just write as is
-			out.WriteString(line + "\n")
-			continue
-		}
 		key := strings.TrimSpace(parts[0])
-		value := strings.Trim(strings.TrimSpace(parts[1]), "\"")
-		if key == a.Annotation {
-			found = true
-			if value != a.Value {
-				fmt.Fprintf(out, "    %s: %q\n", a.Annotation, a.Value)
-				changed = true
-				continue
-			}
-		} else if key == a.SkipAnnotation {
-			shouldSkip = true
+		if key == annotation {
+			return true
 		}
-		out.WriteString(line + "\n")
 	}
-	if !found && !shouldSkip {
+	return false
+}
+
+func (a *manifestAnnotator) processAnnotations(lines []string, out *bytes.Buffer) bool {
+	changed := false
+	shouldSkip := false
+
+	if includesAnnotation(lines, a.SkipAnnotation) {
+		shouldSkip = true
+	}
+
+	if !shouldSkip && !includesAnnotation(lines, a.Annotation) {
 		changed = true
-		fmt.Fprintf(out, "    %s: %q\n", a.Annotation, a.Value)
+		lines = append(lines, fmt.Sprintf("    %s: %q", a.Annotation, a.Value))
+	}
+
+	if changed {
+		sortAnnotations(lines)
+	}
+	for _, line := range lines {
+		out.WriteString(line + "\n")
 	}
 	return changed
 }
