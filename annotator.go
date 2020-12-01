@@ -149,67 +149,97 @@ func (a *manifestAnnotator) processMetadata(lines []string, kind, groupVersion s
 	return changed
 }
 
-type annotationSorter struct {
+func (a *manifestAnnotator) processAnnotations(lines []string, out *bytes.Buffer) bool {
+	annotations := parseAnnotations(lines)
+	if !annotations.Includes(a.Annotation) && !annotations.Includes(a.SkipAnnotation) {
+		annotations.Add(a.Annotation, a.Value)
+		annotations.Sort()
+		annotations.Write(out)
+		return true
+	}
+	annotations.Write(out)
+	return false
+}
+
+type annotation struct {
+	key   string
 	lines []string
 }
 
-func (s *annotationSorter) Len() int {
-	return len(s.lines)
+type annotations []annotation
+
+func (a annotations) Len() int {
+	return len(a)
 }
 
-// Less reports whether the element with
-// index i should sort before the element with index j.
-func (s *annotationSorter) Less(i, j int) bool {
-	partsI := strings.SplitN(s.lines[i], ":", 2)
-	partsJ := strings.SplitN(s.lines[j], ":", 2)
-	if partsI[0] == partsJ[0] {
-		return partsI[1] < partsJ[1]
-	}
-	return partsI[0] < partsJ[0]
+func (a annotations) Less(i, j int) bool {
+	return a[i].key < a[j].key
 }
 
-// Swap swaps the elements with indexes i and j.
-func (s *annotationSorter) Swap(i, j int) {
-	tmp := s.lines[i]
-	s.lines[i] = s.lines[j]
-	s.lines[j] = tmp
+func (a annotations) Swap(i, j int) {
+	tmp := a[i]
+	a[i] = a[j]
+	a[j] = tmp
 }
 
-func sortAnnotations(lines []string) {
-	sort.Sort(&annotationSorter{lines: lines})
+func (a annotations) Sort() {
+	sort.Sort(a)
 }
 
-func includesAnnotation(lines []string, annotation string) bool {
-	for _, line := range lines {
-		parts := strings.SplitN(line, ":", 2)
-		key := strings.TrimSpace(parts[0])
-		if key == annotation {
+func (a annotations) Includes(key string) bool {
+	for _, aa := range a {
+		if aa.key == key {
 			return true
 		}
 	}
 	return false
 }
 
-func (a *manifestAnnotator) processAnnotations(lines []string, out *bytes.Buffer) bool {
-	changed := false
-	shouldSkip := false
-
-	if includesAnnotation(lines, a.SkipAnnotation) {
-		shouldSkip = true
+func (a annotations) Write(out *bytes.Buffer) {
+	for _, aa := range a {
+		for _, line := range aa.lines {
+			out.WriteString(line + "\n")
+		}
 	}
+}
 
-	if !shouldSkip && !includesAnnotation(lines, a.Annotation) {
-		changed = true
-		lines = append(lines, fmt.Sprintf("    %s: %q", a.Annotation, a.Value))
-	}
+func (a *annotations) Add(key, value string) {
+	*a = append(*a, newAnnotation(key, value))
+}
 
-	if changed {
-		sortAnnotations(lines)
+func newAnnotation(key, value string) annotation {
+	return annotation{
+		key:   key,
+		lines: []string{fmt.Sprintf("    %s: %s", key, value)},
 	}
+}
+
+func parseAnnotations(lines []string) annotations {
+	var currentAnnotation *annotation
+	result := annotations{}
 	for _, line := range lines {
-		out.WriteString(line + "\n")
+		if strings.HasPrefix(line, "      ") {
+			if currentAnnotation != nil {
+				currentAnnotation.lines = append(currentAnnotation.lines, line)
+			}
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		if currentAnnotation != nil {
+			result = append(result, *currentAnnotation)
+		}
+		currentAnnotation = &annotation{
+			key:   strings.TrimSpace(parts[0]),
+			lines: []string{line},
+		}
 	}
-	return changed
+	if currentAnnotation != nil {
+		result = append(result, *currentAnnotation)
+	}
+	return result
 }
 
 func readLines(path string) ([]string, error) {
